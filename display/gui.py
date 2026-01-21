@@ -448,21 +448,20 @@ class GUIDisplay(DisplayDriver):
         outer_frame = tk.Frame(parent, bg="#1a1f3a")
         outer_frame.pack()
         
-        # Main card with better contrast
+        # Main card with better contrast - flexible height
         card = tk.Frame(
             outer_frame,
             bg="#1a1f3a",
             relief=tk.FLAT,
             bd=0,
-            width=320,
-            height=220
+            width=320
         )
         card.pack(padx=3, pady=3)
         card.pack_propagate(False)
         
         # Inner content frame with padding
         content = tk.Frame(card, bg="#1a1f3a")
-        content.pack(fill=tk.BOTH, expand=True, padx=25, pady=25)
+        content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
         
         # Icon and value with larger, bolder styling
         value_frame = tk.Frame(content, bg="#1a1f3a")
@@ -478,16 +477,19 @@ class GUIDisplay(DisplayDriver):
             )
             icon_label.pack(side=tk.LEFT, padx=(0, 12))
         
+        # Value label with wrapping for long values
         value_label = tk.Label(
             value_frame,
             text=value,
             font=self.large_font,
             fg=self.accent_color,
-            bg="#1a1f3a"
+            bg="#1a1f3a",
+            wraplength=200,  # Allow wrapping for long values
+            justify=tk.LEFT
         )
         value_label.pack(side=tk.LEFT)
         
-        # Label with better styling - use bold font variant
+        # Label with better styling - use bold font variant with wrapping
         bold_body_font = font.Font(font=self.body_font)
         bold_body_font.configure(weight="bold")
         
@@ -496,18 +498,22 @@ class GUIDisplay(DisplayDriver):
             text=label,
             font=bold_body_font,
             fg=self.text_color,
-            bg="#1a1f3a"
+            bg="#1a1f3a",
+            wraplength=280,  # Wrap long labels
+            justify=tk.CENTER
         )
         label_widget.pack(pady=(0, 5))
         
-        # Description if provided
+        # Description if provided - with wrapping
         if description:
             desc_widget = tk.Label(
                 content,
                 text=description,
                 font=self.small_font,
                 fg="#666666",
-                bg="#1a1f3a"
+                bg="#1a1f3a",
+                wraplength=280,  # Wrap description text
+                justify=tk.CENTER
             )
             desc_widget.pack()
         
