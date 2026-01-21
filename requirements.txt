@@ -1,4 +1,4 @@
 requests>=2.31.0
 PyYAML>=6.0
-RPLCD>=2.0.0
+RPLCD>=1.4.0
 RPi.GPIO>=0.7.1
