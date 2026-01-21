@@ -223,7 +223,9 @@ class GUIDisplay(DisplayDriver):
                 text=top_repo_text,
                 font=self.large_font,
                 fg=self.accent_color,
-                bg="#1a1f3a"
+                bg="#1a1f3a",
+                wraplength=600,  # Allow wrapping for long repo names
+                justify=tk.CENTER
             )
             top_label.pack(pady=5)
             
@@ -258,19 +260,23 @@ class GUIDisplay(DisplayDriver):
             full_name if full_name != repo_name else ""
         )
         
-        # Description if available
+        # Description if available - with proper wrapping
         description = repo_data.get("description", "")
         if description:
             desc_frame = tk.Frame(self.content_frame, bg=self.bg_color)
-            desc_frame.pack(pady=(0, 30))
+            desc_frame.pack(pady=(0, 30), padx=40)
+            
+            # Truncate very long descriptions but allow wrapping
+            max_length = 150
+            display_desc = description[:max_length] + "..." if len(description) > max_length else description
             
             desc_label = tk.Label(
                 desc_frame,
-                text=description[:120] + "..." if len(description) > 120 else description,
+                text=display_desc,
                 font=self.medium_font,
                 fg="#aaaaaa",
                 bg=self.bg_color,
-                wraplength=self.width - 200,
+                wraplength=min(self.width - 200, 800),  # Reasonable max width
                 justify=tk.CENTER
             )
             desc_label.pack()
