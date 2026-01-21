@@ -481,14 +481,16 @@ class GUIDisplay(DisplayDriver):
         )
         value_label.pack(side=tk.LEFT)
         
-        # Label with better styling
+        # Label with better styling - use bold font variant
+        bold_body_font = font.Font(font=self.body_font)
+        bold_body_font.configure(weight="bold")
+        
         label_widget = tk.Label(
             content,
             text=label,
-            font=self.body_font,
+            font=bold_body_font,
             fg=self.text_color,
-            bg="#1a1f3a",
-            weight="bold"
+            bg="#1a1f3a"
         )
         label_widget.pack(pady=(0, 5))
         
