@@ -48,8 +48,10 @@ pip install -r requirements.txt
 3. **For Raspberry Pi with Character LCD** (optional):
 
 ```bash
-pip install RPLCD RPi.GPIO
+pip install -r requirements-raspberrypi.txt
 ```
+
+**Note**: The Raspberry Pi dependencies (`RPLCD` and `RPi.GPIO`) are only needed if you're using a character LCD display on a Raspberry Pi. They cannot be installed on Windows/Mac and are not required for GUI or terminal displays.
 
 ## Configuration
 

@@ -1,0 +1,6 @@
+# Additional requirements for Raspberry Pi with character LCD displays
+# Install with: pip install -r requirements-raspberrypi.txt
+# Note: These packages only work on Raspberry Pi (Linux ARM)
+
+RPLCD>=1.4.0
+RPi.GPIO>=0.7.1
