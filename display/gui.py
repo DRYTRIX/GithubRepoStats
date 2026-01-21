@@ -144,15 +144,15 @@ class GUIDisplay(DisplayDriver):
         
         stars_card = self._create_enhanced_stat_card(
             row1, "Total Stars", data.get("total_stars_formatted", "0"), 
-            "★", "#ffd700", "Across all repositories"
+            "★", "#ffd700", "All repositories"
         )
-        stars_card.pack(side=tk.LEFT, padx=25)
+        stars_card.pack(side=tk.LEFT, padx=20)
         
         forks_card = self._create_enhanced_stat_card(
             row1, "Total Forks", data.get("total_forks_formatted", "0"),
-            "🍴", "#4a9eff", "Community contributions"
+            "🍴", "#4a9eff", "Contributions"
         )
-        forks_card.pack(side=tk.LEFT, padx=25)
+        forks_card.pack(side=tk.LEFT, padx=20)
         
         # Row 2: Issues and Active Repos
         row2 = tk.Frame(stats_frame, bg=self.bg_color)
@@ -160,17 +160,17 @@ class GUIDisplay(DisplayDriver):
         
         issues_card = self._create_enhanced_stat_card(
             row2, "Open Issues", str(data.get("total_open_issues", 0)),
-            "📋", "#ff6b6b", "Issues needing attention"
+            "📋", "#ff6b6b", "To resolve"
         )
-        issues_card.pack(side=tk.LEFT, padx=25)
+        issues_card.pack(side=tk.LEFT, padx=20)
         
         active = data.get("active_repos", 0)
         total = data.get("total_repos", 0)
         active_card = self._create_enhanced_stat_card(
-            row2, "Active Repositories", f"{active} / {total}",
-            "⚡", "#51cf66", "Updated in last 7 days"
+            row2, "Active Repos", f"{active}/{total}",
+            "⚡", "#51cf66", "Last 7 days"
         )
-        active_card.pack(side=tk.LEFT, padx=25)
+        active_card.pack(side=tk.LEFT, padx=20)
         
         # Row 3: Package downloads if available
         if "total_downloads" in data and data.get("total_downloads", 0) > 0:
@@ -179,9 +179,9 @@ class GUIDisplay(DisplayDriver):
             
             downloads_card = self._create_enhanced_stat_card(
                 row3, "Package Downloads", data.get("total_downloads_formatted", "0"),
-                "📦", "#a78bfa", "Container registry pulls"
+                "📦", "#a78bfa", "Container pulls"
             )
-            downloads_card.pack(side=tk.LEFT, padx=25)
+            downloads_card.pack(side=tk.LEFT, padx=20)
         
         # Donations if available
         if "total_donations" in data and data.get("total_donations", 0) > 0:
@@ -189,10 +189,10 @@ class GUIDisplay(DisplayDriver):
             donations_row.pack(pady=20)
             
             donations_card = self._create_enhanced_stat_card(
-                donations_row, "Total Donations", data.get("total_donations_formatted", "$0"),
-                "💝", "#f472b6", "Community support"
+                donations_row, "Donations", data.get("total_donations_formatted", "$0"),
+                "💝", "#f472b6", "Support"
             )
-            donations_card.pack(side=tk.LEFT, padx=25)
+            donations_card.pack(side=tk.LEFT, padx=20)
         
         # Divider before additional info
         if data.get("most_starred"):
@@ -217,15 +217,14 @@ class GUIDisplay(DisplayDriver):
             )
             highlight_label.pack(pady=(20, 5))
             
-            top_repo_text = f"{most_starred['name']}"
+            # Truncate repo name if too long
+            repo_name = truncate_text(most_starred['name'], 40)
             top_label = tk.Label(
                 info_box,
-                text=top_repo_text,
+                text=repo_name,
                 font=self.large_font,
                 fg=self.accent_color,
-                bg="#1a1f3a",
-                wraplength=600,  # Allow wrapping for long repo names
-                justify=tk.CENTER
+                bg="#1a1f3a"
             )
             top_label.pack(pady=5)
             
@@ -260,24 +259,22 @@ class GUIDisplay(DisplayDriver):
             full_name if full_name != repo_name else ""
         )
         
-        # Description if available - with proper wrapping
+        # Description if available - properly truncated
         description = repo_data.get("description", "")
         if description:
             desc_frame = tk.Frame(self.content_frame, bg=self.bg_color)
             desc_frame.pack(pady=(0, 30), padx=40)
             
-            # Truncate very long descriptions but allow wrapping
-            max_length = 150
-            display_desc = description[:max_length] + "..." if len(description) > max_length else description
+            # Truncate description to reasonable length
+            max_desc_length = 100
+            display_desc = truncate_text(description, max_desc_length)
             
             desc_label = tk.Label(
                 desc_frame,
                 text=display_desc,
                 font=self.medium_font,
                 fg="#aaaaaa",
-                bg=self.bg_color,
-                wraplength=min(self.width - 200, 800),  # Reasonable max width
-                justify=tk.CENTER
+                bg=self.bg_color
             )
             desc_label.pack()
         
@@ -291,51 +288,55 @@ class GUIDisplay(DisplayDriver):
         
         stars_card = self._create_enhanced_stat_card(
             row1, "Stars", repo_data.get("stars_formatted", "0"),
-            "★", "#ffd700", "Community favorites"
+            "★", "#ffd700", "Favorites"
         )
-        stars_card.pack(side=tk.LEFT, padx=20)
+        stars_card.pack(side=tk.LEFT, padx=15)
         
         forks_card = self._create_enhanced_stat_card(
             row1, "Forks", repo_data.get("forks_formatted", "0"),
-            "🍴", "#4a9eff", "Copied repositories"
+            "🍴", "#4a9eff", "Copies"
         )
-        forks_card.pack(side=tk.LEFT, padx=20)
+        forks_card.pack(side=tk.LEFT, padx=15)
         
         # Row 2: Issues and Language
         row2 = tk.Frame(stats_frame, bg=self.bg_color)
         row2.pack(pady=20)
         
         issues_card = self._create_enhanced_stat_card(
-            row2, "Open Issues", str(repo_data.get("open_issues", 0)),
-            "📋", "#ff6b6b", "Issues to resolve"
+            row2, "Issues", str(repo_data.get("open_issues", 0)),
+            "📋", "#ff6b6b", "Open"
         )
-        issues_card.pack(side=tk.LEFT, padx=20)
+        issues_card.pack(side=tk.LEFT, padx=15)
         
         lang = repo_data.get("language", "N/A")
+        # Truncate language name if too long
+        lang_display = truncate_text(lang, 12)
         lang_card = self._create_enhanced_stat_card(
-            row2, "Primary Language", lang,
-            "💻", "#51cf66", "Main technology"
+            row2, "Language", lang_display,
+            "💻", "#51cf66", "Tech"
         )
-        lang_card.pack(side=tk.LEFT, padx=20)
+        lang_card.pack(side=tk.LEFT, padx=15)
         
         # Row 3: Version and Downloads if available
         if "latest_version" in repo_data and repo_data.get("latest_version"):
             row3 = tk.Frame(stats_frame, bg=self.bg_color)
             row3.pack(pady=20)
             
+            version = repo_data.get("latest_version", "N/A")
+            version_display = truncate_text(version, 15)
             version_card = self._create_enhanced_stat_card(
-                row3, "Latest Version", repo_data.get("latest_version", "N/A"),
-                "🏷️", "#a78bfa", "Current release tag"
+                row3, "Version", version_display,
+                "🏷️", "#a78bfa", "Release"
             )
-            version_card.pack(side=tk.LEFT, padx=20)
+            version_card.pack(side=tk.LEFT, padx=15)
             
             downloads = repo_data.get("release_downloads", 0)
             downloads_formatted = self._format_number(downloads)
             downloads_card = self._create_enhanced_stat_card(
-                row3, "Release Downloads", downloads_formatted,
-                "📦", "#f472b6", "Asset downloads"
+                row3, "Downloads", downloads_formatted,
+                "📦", "#f472b6", "Assets"
             )
-            downloads_card.pack(side=tk.LEFT, padx=20)
+            downloads_card.pack(side=tk.LEFT, padx=15)
         
         # Additional info section
         info_frame = tk.Frame(self.content_frame, bg=self.bg_color)
@@ -421,6 +422,12 @@ class GUIDisplay(DisplayDriver):
         
         self._current_content = "repo"
     
+    def _truncate_for_display(self, text: str, max_chars: int) -> str:
+        """Truncate text to fit display, handling emojis and special chars."""
+        if len(text) <= max_chars:
+            return text
+        return text[:max_chars - 3] + "..."
+    
     def _create_enhanced_stat_card(
         self,
         parent: tk.Widget,
@@ -431,7 +438,7 @@ class GUIDisplay(DisplayDriver):
         description: str = ""
     ) -> tk.Frame:
         """
-        Create an enhanced stat card with better clarity.
+        Create an enhanced stat card with better clarity and text handling.
         
         Args:
             parent: Parent widget
@@ -444,28 +451,38 @@ class GUIDisplay(DisplayDriver):
         Returns:
             Frame containing the stat card
         """
+        # Truncate text to fit card width (accounting for padding)
+        max_label_chars = 25
+        max_value_chars = 15
+        max_desc_chars = 30
+        
+        truncated_label = self._truncate_for_display(label, max_label_chars)
+        truncated_value = self._truncate_for_display(value, max_value_chars)
+        truncated_desc = self._truncate_for_display(description, max_desc_chars) if description else ""
+        
         # Outer frame with subtle border
         outer_frame = tk.Frame(parent, bg="#1a1f3a")
         outer_frame.pack()
         
-        # Main card with better contrast - flexible height
+        # Main card - wider and with min height
         card = tk.Frame(
             outer_frame,
             bg="#1a1f3a",
             relief=tk.FLAT,
             bd=0,
-            width=320
+            width=360,
+            height=240
         )
         card.pack(padx=3, pady=3)
         card.pack_propagate(False)
         
         # Inner content frame with padding
         content = tk.Frame(card, bg="#1a1f3a")
-        content.pack(fill=tk.BOTH, expand=True, padx=20, pady=20)
+        content.pack(fill=tk.BOTH, expand=True, padx=18, pady=18)
         
         # Icon and value with larger, bolder styling
         value_frame = tk.Frame(content, bg="#1a1f3a")
-        value_frame.pack(pady=(5, 12))
+        value_frame.pack(pady=(8, 10))
         
         if icon:
             icon_label = tk.Label(
@@ -475,45 +492,39 @@ class GUIDisplay(DisplayDriver):
                 fg=icon_color,
                 bg="#1a1f3a"
             )
-            icon_label.pack(side=tk.LEFT, padx=(0, 12))
+            icon_label.pack(side=tk.LEFT, padx=(0, 10))
         
-        # Value label with wrapping for long values
+        # Value label - truncated to fit
         value_label = tk.Label(
             value_frame,
-            text=value,
+            text=truncated_value,
             font=self.large_font,
             fg=self.accent_color,
-            bg="#1a1f3a",
-            wraplength=200,  # Allow wrapping for long values
-            justify=tk.LEFT
+            bg="#1a1f3a"
         )
         value_label.pack(side=tk.LEFT)
         
-        # Label with better styling - use bold font variant with wrapping
+        # Label with better styling - use bold font variant, truncated
         bold_body_font = font.Font(font=self.body_font)
         bold_body_font.configure(weight="bold")
         
         label_widget = tk.Label(
             content,
-            text=label,
+            text=truncated_label,
             font=bold_body_font,
             fg=self.text_color,
-            bg="#1a1f3a",
-            wraplength=280,  # Wrap long labels
-            justify=tk.CENTER
+            bg="#1a1f3a"
         )
-        label_widget.pack(pady=(0, 5))
+        label_widget.pack(pady=(0, 6))
         
-        # Description if provided - with wrapping
-        if description:
+        # Description if provided - truncated
+        if truncated_desc:
             desc_widget = tk.Label(
                 content,
-                text=description,
+                text=truncated_desc,
                 font=self.small_font,
                 fg="#666666",
-                bg="#1a1f3a",
-                wraplength=280,  # Wrap description text
-                justify=tk.CENTER
+                bg="#1a1f3a"
             )
             desc_widget.pack()
         
