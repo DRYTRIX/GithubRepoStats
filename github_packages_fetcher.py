@@ -1,6 +1,7 @@
 """GitHub Packages API client for fetching container registry package statistics."""
 
 import time
+import re
 from typing import Dict, Any, Optional, List
 import requests
 from cache_manager import CacheManager
@@ -113,6 +114,139 @@ class GitHubPackagesFetcher:
         except Exception:
             return []
     
+    def _scrape_package_downloads(
+        self,
+        owner: str,
+        package_name: str
+    ) -> Dict[str, Any]:
+        """
+        Scrape download counts from GitHub Container Registry package page.
+        
+        Since GitHub doesn't expose download counts via API, we scrape the web page.
+        
+        Args:
+            owner: Package owner
+            package_name: Package name
+            
+        Returns:
+            Dictionary with scraped download statistics
+        """
+        try:
+            # GitHub package page URL
+            url = f"https://github.com/{owner}/{package_name}/pkgs/container/{package_name}"
+            
+            # Use browser-like headers
+            headers = {
+                "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36",
+                "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+                "Accept-Language": "en-US,en;q=0.5",
+            }
+            
+            response = self.session.get(url, headers=headers, timeout=15)
+            
+            if response.status_code != 200:
+                return {"total_downloads": 0, "error": f"HTTP {response.status_code}"}
+            
+            html = response.text
+            
+            # Pattern 1: Look for "Total downloads" text with number
+            # Example: "Total downloads 4K" or "Total downloads 4,000"
+            total_patterns = [
+                r'Total downloads[:\s]+([\d,\.]+[KM]?)',
+                r'Total downloads[:\s]+([\d,]+)',
+                r'"totalDownloads":\s*([\d,]+)',
+                r'total[_\s]*downloads[:\s]*([\d,\.]+[KM]?)',
+            ]
+            
+            total_downloads = 0
+            
+            for pattern in total_patterns:
+                matches = re.findall(pattern, html, re.IGNORECASE)
+                if matches:
+                    # Parse the number (handle K, M suffixes)
+                    for match in matches:
+                        try:
+                            match_str = match.replace(',', '').strip()
+                            if match_str.upper().endswith('K'):
+                                total_downloads = int(float(match_str[:-1]) * 1000)
+                            elif match_str.upper().endswith('M'):
+                                total_downloads = int(float(match_str[:-1]) * 1000000)
+                            else:
+                                total_downloads = int(float(match_str))
+                            break
+                        except ValueError:
+                            continue
+                    if total_downloads > 0:
+                        break
+            
+            # Pattern 2: Look in JSON data embedded in the page
+            if total_downloads == 0:
+                # Try to find JSON data in script tags
+                script_pattern = r'<script[^>]*type=["\']application/json["\'][^>]*>(.*?)</script>'
+                scripts = re.findall(script_pattern, html, re.DOTALL | re.IGNORECASE)
+                
+                for script in scripts:
+                    try:
+                        import json
+                        data = json.loads(script)
+                        # Recursively search for download count
+                        def find_downloads(obj, path=""):
+                            if isinstance(obj, dict):
+                                for key, value in obj.items():
+                                    if 'download' in key.lower() and isinstance(value, (int, float)):
+                                        return int(value)
+                                    result = find_downloads(value, f"{path}.{key}")
+                                    if result:
+                                        return result
+                            elif isinstance(obj, list):
+                                for item in obj:
+                                    result = find_downloads(item, path)
+                                    if result:
+                                        return result
+                            return None
+                        
+                        found = find_downloads(data)
+                        if found and found > 0:
+                            total_downloads = found
+                            break
+                    except (json.JSONDecodeError, ValueError):
+                        continue
+            
+            # Pattern 3: Look for version-specific downloads and sum them
+            if total_downloads == 0:
+                # Pattern: "30Version downloads" or "100 downloads" near version tags
+                version_download_patterns = [
+                    r'([\d,]+)\s*Version downloads',
+                    r'([\d,]+)\s*downloads',
+                    r'"downloads":\s*([\d,]+)',
+                ]
+                
+                version_downloads = []
+                for pattern in version_download_patterns:
+                    matches = re.findall(pattern, html, re.IGNORECASE)
+                    for match in matches:
+                        try:
+                            count = int(match.replace(',', ''))
+                            if count > 0:
+                                version_downloads.append(count)
+                        except ValueError:
+                            continue
+                
+                if version_downloads:
+                    total_downloads = sum(version_downloads)
+            
+            return {
+                "total_downloads": total_downloads,
+                "source": "scraped"
+            }
+        
+        except Exception as e:
+            return {
+                "total_downloads": 0,
+                "error": str(e),
+                "source": "scraped"
+            }
+    
     def get_package_downloads(
         self,
         owner: str,
@@ -122,12 +256,8 @@ class GitHubPackagesFetcher:
         """
         Get download statistics for a package.
         
-        IMPORTANT: GitHub Container Registry (ghcr.io) does NOT expose download/pull
-        counts via the API. This method will return 0 for container packages.
-        
-        For accurate download counts, use GitHub Releases API which tracks
-        release asset downloads. The main.py will automatically fall back to
-        release downloads if package downloads are 0.
+        For container packages, this will scrape the GitHub package page since
+        GitHub Container Registry doesn't expose download counts via API.
         
         Args:
             owner: Package owner
@@ -138,7 +268,7 @@ class GitHubPackagesFetcher:
             Dictionary with package download statistics
         """
         try:
-            # First, try to get package info
+            # First, try to get package info via API
             package_info_endpoint = f"/users/{owner}/packages/{package_type}/{package_name}"
             package_info = self._make_request(package_info_endpoint, use_cache=True)
             
@@ -148,44 +278,38 @@ class GitHubPackagesFetcher:
             latest_version = None
             latest_version_downloads = 0
             
-            # Try to get download counts from versions
-            for version in versions:
-                version_id = version.get("id")
-                if version_id:
-                    try:
-                        version_endpoint = f"/users/{owner}/packages/{package_type}/{package_name}/versions/{version_id}"
-                        version_data = self._make_request(version_endpoint, use_cache=True)
-                        
-                        # Check various possible fields for download count
-                        downloads = (
-                            version_data.get("download_count") or
-                            version_data.get("package_file", {}).get("download_count") or
-                            0
-                        )
-                        
-                        if downloads and downloads > 0:
-                            total_downloads += downloads
+            # For container packages, scrape the web page for download counts
+            if package_type == "container":
+                scraped_data = self._scrape_package_downloads(owner, package_name)
+                total_downloads = scraped_data.get("total_downloads", 0)
+                if total_downloads > 0:
+                    print(f"Scraped {total_downloads} downloads for {owner}/{package_name}")
+            else:
+                # For other package types, try API
+                for version in versions:
+                    version_id = version.get("id")
+                    if version_id:
+                        try:
+                            version_endpoint = f"/users/{owner}/packages/{package_type}/{package_name}/versions/{version_id}"
+                            version_data = self._make_request(version_endpoint, use_cache=True)
                             
-                            # Track latest version
-                            version_created = version.get("created_at", "")
-                            if not latest_version or (latest_version and version_created > latest_version.get("created_at", "")):
-                                latest_version = version_data
-                                latest_version_downloads = downloads
-                    except Exception:
-                        continue
-            
-            # If no downloads found from package versions, try to get from releases
-            # This works if the package is also published as release assets
-            if total_downloads == 0:
-                try:
-                    # Try to find associated repository and get release downloads
-                    repo_name = package_info.get("repository", {}).get("full_name")
-                    if repo_name:
-                        # Use the GitHub fetcher to get release downloads
-                        # This will be handled in main.py by combining repo release downloads
-                        pass
-                except Exception:
-                    pass
+                            # Check various possible fields for download count
+                            downloads = (
+                                version_data.get("download_count") or
+                                version_data.get("package_file", {}).get("download_count") or
+                                0
+                            )
+                            
+                            if downloads and downloads > 0:
+                                total_downloads += downloads
+                                
+                                # Track latest version
+                                version_created = version.get("created_at", "")
+                                if not latest_version or (latest_version and version_created > latest_version.get("created_at", "")):
+                                    latest_version = version_data
+                                    latest_version_downloads = downloads
+                        except Exception:
+                            continue
             
             return {
                 "total_downloads": total_downloads,
