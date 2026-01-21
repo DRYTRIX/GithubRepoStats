@@ -5,6 +5,15 @@ from tkinter import font
 from typing import List, Optional, Dict, Any
 from .base import DisplayDriver
 
+# Import truncate_text - handle both relative and absolute imports
+try:
+    from utils import truncate_text
+except ImportError:
+    import sys
+    import os
+    sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+    from utils import truncate_text
+
 
 class GUIDisplay(DisplayDriver):
     """Full-screen GUI display for HDMI screens using tkinter."""
