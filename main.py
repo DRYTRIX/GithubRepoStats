@@ -65,6 +65,14 @@ class GitHubStatsApp:
         self.display = self._init_display()
         self.is_gui = isinstance(self.display, GUIDisplay)
         
+        # Rotation state
+        self.processed_repos = {}
+        self.aggregated_data = None
+        self.current_repo_index = 0
+        self.rotation_enabled = self.config.get("rotation_enabled", True)
+        self.rotation_interval_seconds = self.config.get("rotation_interval_seconds", 10)
+        self.show_summary_first = self.config.get("show_summary_first", True)
+        
         # Setup signal handlers for graceful shutdown
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
@@ -128,21 +136,12 @@ class GitHubStatsApp:
         print("\nShutting down...")
         self.running = False
     
-    def _fetch_and_display(self):
-        """Fetch repository data and update display."""
+    def _fetch_data(self):
+        """Fetch and process repository data."""
         repositories = self.config.get("repositories", [])
         
         if not repositories:
-            if self.is_gui:
-                self.display.update(["No repositories configured. Check config.yaml"])
-            else:
-                self.display.update([
-                    "No repositories",
-                    "configured.",
-                    "Check config.yaml",
-                    ""
-                ])
-            return
+            return None, None
         
         try:
             # Fetch repository statistics
@@ -222,66 +221,115 @@ class GitHubStatsApp:
                 except Exception as e:
                     print(f"Error fetching donations: {e}")
             
-            # Determine view mode
-            view_mode = self.config.get("view_mode", "summary")
+            # Store processed data for rotation
+            self.processed_repos = processed_repos
             
-            if view_mode == "summary":
-                # Show aggregated summary
-                aggregated = self.calculator.aggregate_metrics(
-                    processed_repos,
-                    package_downloads=package_downloads,
-                    donations=donations
-                )
-                
-                if self.is_gui:
-                    self.display.update_summary(aggregated)
-                else:
-                    lines = self.calculator.prepare_summary_lines(
-                        aggregated,
-                        self.display.width
-                    )
-                    self.display.update(lines)
+            # Calculate aggregated metrics
+            aggregated = self.calculator.aggregate_metrics(
+                processed_repos,
+                package_downloads=package_downloads,
+                donations=donations
+            )
+            self.aggregated_data = aggregated
             
-            elif view_mode == "per_repo":
-                # Rotate through repositories
-                if processed_repos:
-                    # Show first repo (could be enhanced to rotate)
-                    first_repo = next(iter(processed_repos.values()))
-                    
-                    if self.is_gui:
-                        self.display.update_repo(first_repo)
-                    else:
-                        lines = self.calculator.prepare_display_lines(
-                            first_repo,
-                            self.display.width
-                        )
-                        self.display.update(lines)
-                else:
-                    if self.is_gui:
-                        self.display.update(["No repository data available."])
-                    else:
-                        self.display.update([
-                            "No repository",
-                            "data available.",
-                            "",
-                            ""
-                        ])
-            
-            print("Display updated successfully.")
+            return processed_repos, aggregated
         
         except Exception as e:
-            error_msg = str(e)
+            print(f"Error fetching data: {e}", file=sys.stderr)
+            return None, None
+    
+    def _display_repo(self, repo_data: Dict[str, Any]) -> None:
+        """Display a single repository."""
+        if self.is_gui:
+            self.display.update_repo(repo_data)
+        else:
+            lines = self.calculator.prepare_display_lines(
+                repo_data,
+                self.display.width
+            )
+            self.display.update(lines)
+    
+    def _display_summary(self, aggregated: Dict[str, Any]) -> None:
+        """Display aggregated summary."""
+        if self.is_gui:
+            self.display.update_summary(aggregated)
+        else:
+            lines = self.calculator.prepare_summary_lines(
+                aggregated,
+                self.display.width
+            )
+            self.display.update(lines)
+    
+    def _rotate_display(self):
+        """Rotate through repositories and summary view."""
+        if not self.processed_repos and not self.aggregated_data:
+            # No data available, show error
             if self.is_gui:
-                self.display.update([f"Error: {error_msg}"])
+                self.display.update(["No repository data available."])
             else:
-                error_msg = error_msg[:self.display.width] if hasattr(self.display, 'width') else error_msg
+                self.display.update([
+                    "No repository",
+                    "data available.",
+                    "",
+                    ""
+                ])
+            return
+        
+        repos_list = list(self.processed_repos.values())
+        
+        # Determine what to show based on rotation
+        if self.show_summary_first and self.current_repo_index == 0:
+            # Show summary first
+            if self.aggregated_data:
+                self._display_summary(self.aggregated_data)
+                print("Displaying summary view")
+        elif repos_list:
+            # Show individual repository
+            repo_index = (self.current_repo_index - (1 if self.show_summary_first else 0)) % len(repos_list)
+            repo_data = repos_list[repo_index]
+            repo_name = list(self.processed_repos.keys())[repo_index]
+            self._display_repo(repo_data)
+            print(f"Displaying repository: {repo_name}")
+        
+        # Advance to next item
+        total_items = len(repos_list) + (1 if self.show_summary_first else 0)
+        self.current_repo_index = (self.current_repo_index + 1) % total_items
+    
+    def _fetch_and_display(self):
+        """Fetch repository data and update display."""
+        repositories = self.config.get("repositories", [])
+        
+        if not repositories:
+            if self.is_gui:
+                self.display.update(["No repositories configured. Check config.yaml"])
+            else:
+                self.display.update([
+                    "No repositories",
+                    "configured.",
+                    "Check config.yaml",
+                    ""
+                ])
+            return
+        
+        # Fetch fresh data
+        processed_repos, aggregated = self._fetch_data()
+        
+        if processed_repos is None:
+            # Error occurred, show error message
+            error_msg = "Failed to fetch repository data"
+            if self.is_gui:
+                self.display.update([error_msg])
+            else:
                 self.display.update([
                     "Error occurred:",
-                    truncate_text(error_msg, self.display.width if hasattr(self.display, 'width') else 80),
+                    error_msg,
                     "Check logs",
                     ""
                 ])
-            print(f"Error: {e}", file=sys.stderr)
+            return
+        
+        # Update rotation display
+        self._rotate_display()
     
     def run(self):
         """Run the main application loop."""
@@ -291,24 +339,42 @@ class GitHubStatsApp:
         print(f"GitHub Stats Display starting...")
         print(f"Refresh interval: {refresh_interval} minutes")
         print(f"Repositories: {len(self.config.get('repositories', []))}")
+        if self.rotation_enabled:
+            print(f"Rotation enabled: {self.rotation_interval_seconds} seconds per item")
         print("Press Ctrl+C to stop (or Escape in fullscreen mode)")
         
-        # Initial display
+        # Initial data fetch
         self._fetch_and_display()
         
         if self.is_gui:
-            # For GUI, run update loop in a separate thread
-            def update_loop():
+            # For GUI, run update loops in separate threads
+            def data_refresh_loop():
+                """Periodically refresh data from API."""
                 while self.running:
                     time.sleep(refresh_seconds)
                     if self.running:
                         try:
-                            self._fetch_and_display()
+                            self._fetch_data()
                         except Exception as e:
-                            print(f"Error in update loop: {e}")
+                            print(f"Error in data refresh loop: {e}")
             
-            update_thread = threading.Thread(target=update_loop, daemon=True)
-            update_thread.start()
+            def rotation_loop():
+                """Rotate through repositories and summary."""
+                while self.running:
+                    time.sleep(self.rotation_interval_seconds)
+                    if self.running:
+                        try:
+                            self._rotate_display()
+                        except Exception as e:
+                            print(f"Error in rotation loop: {e}")
+            
+            # Start background threads
+            if self.rotation_enabled:
+                rotation_thread = threading.Thread(target=rotation_loop, daemon=True)
+                rotation_thread.start()
+            
+            data_refresh_thread = threading.Thread(target=data_refresh_loop, daemon=True)
+            data_refresh_thread.start()
             
             # Run GUI main loop
             try:
@@ -317,11 +383,27 @@ class GitHubStatsApp:
                 pass
         else:
             # Main loop for non-GUI displays
+            last_rotation_time = time.time()
+            last_refresh_time = time.time()
+            
             while self.running:
                 try:
-                    time.sleep(refresh_seconds)
-                    if self.running:
+                    current_time = time.time()
+                    
+                    # Check if it's time to refresh data
+                    if current_time - last_refresh_time >= refresh_seconds:
                         self._fetch_and_display()
+                        last_refresh_time = current_time
+                        last_rotation_time = current_time  # Reset rotation timer
+                    
+                    # Check if it's time to rotate
+                    elif self.rotation_enabled and current_time - last_rotation_time >= self.rotation_interval_seconds:
+                        self._rotate_display()
+                        last_rotation_time = current_time
+                    
+                    # Sleep for a short time to avoid busy waiting
+                    time.sleep(1)
+                    
                 except KeyboardInterrupt:
                     break
         

@@ -53,11 +53,10 @@ display_settings:
   # width: 20
   # height: 4
 
-# View mode
-# Options:
-#   summary: Show aggregated statistics across all repos
-#   per_repo: Show individual repository details (rotates through repos)
-view_mode: summary
+# Rotation configuration
+rotation_enabled: true  # Enable automatic rotation through repositories
+rotation_interval_seconds: 10  # How long to show each repository/summary (in seconds)
+show_summary_first: true  # Show summary view first, then cycle through repos
 
 # Cache configuration
 cache_enabled: true
