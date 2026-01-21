@@ -164,25 +164,32 @@ class GitHubFetcher:
         
         # Get latest release and downloads
         try:
+            # Use shorter cache for releases to get fresh download counts
             release = self._make_request(
                 f"/repos/{owner}/{repo}/releases/latest",
-                use_cache=True
+                use_cache=False  # Don't cache to get fresh download counts
             )
             if release:
                 stats["latest_version"] = release.get("tag_name", "")
                 stats["release_name"] = release.get("name", "")
                 stats["release_date"] = release.get("published_at", "")
                 
-                # Sum download counts from all assets
+                # Sum download counts from all assets in the latest release only
                 assets = release.get("assets", [])
                 total_downloads = sum(asset.get("download_count", 0) for asset in assets)
                 stats["release_downloads"] = total_downloads
+                
+                # Debug info
+                if assets:
+                    asset_info = ", ".join([f"{a.get('name', 'unknown')}: {a.get('download_count', 0)}" for a in assets])
+                    print(f"Latest release '{stats['latest_version']}' assets: {asset_info}")
             else:
                 stats["latest_version"] = None
                 stats["release_downloads"] = 0
-        except Exception:
+        except Exception as e:
             stats["latest_version"] = None
             stats["release_downloads"] = 0
+            print(f"Error fetching release for {owner}/{repo}: {e}")
         
         return stats
     

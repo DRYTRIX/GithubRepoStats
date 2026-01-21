@@ -189,20 +189,27 @@ class GitHubStatsApp:
                         print(f"Error fetching GitHub package stats: {e}")
                 
                 # Also sum release downloads from GitHub repos (these are more reliable)
+                # Only use latest release downloads, not cumulative
                 repo_release_downloads = 0
-                for repo_stats in processed_repos.values():
+                for repo_name, repo_stats in processed_repos.items():
                     repo_downloads = repo_stats.get("release_downloads", 0)
+                    # Only add if downloads > 0 (latest release has downloads)
                     if repo_downloads > 0:
                         repo_release_downloads += repo_downloads
+                        print(f"Repo {repo_name}: {repo_downloads} downloads from latest release")
                 
                 # Prefer release downloads if package downloads are 0
                 # (GitHub Container Registry doesn't always expose download counts)
-                if total_downloads == 0 and repo_release_downloads > 0:
-                    total_downloads = repo_release_downloads
-                    print(f"Using release downloads: {total_downloads}")
-                elif total_downloads > 0:
-                    # Combine both if available
-                    total_downloads += repo_release_downloads
+                if total_downloads == 0:
+                    if repo_release_downloads > 0:
+                        total_downloads = repo_release_downloads
+                        print(f"Using release downloads: {total_downloads}")
+                    else:
+                        print("No package or release downloads found")
+                elif total_downloads > 0 and repo_release_downloads > 0:
+                    # If both are available, prefer package downloads but log both
+                    print(f"Package downloads: {total_downloads}, Release downloads: {repo_release_downloads}")
+                    # Don't combine - use package downloads as primary source
                 
                 if total_downloads > 0:
                     package_downloads = total_downloads
