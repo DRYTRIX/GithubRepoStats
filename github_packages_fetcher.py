@@ -123,6 +123,7 @@ class GitHubPackagesFetcher:
         Scrape download counts from GitHub Container Registry package page.
         
         Since GitHub doesn't expose download counts via API, we scrape the web page.
+        Returns both total downloads and latest version downloads.
         
         Args:
             owner: Package owner
@@ -145,12 +146,45 @@ class GitHubPackagesFetcher:
             response = self.session.get(url, headers=headers, timeout=15)
             
             if response.status_code != 200:
-                return {"total_downloads": 0, "error": f"HTTP {response.status_code}"}
+                return {"total_downloads": 0, "latest_version_downloads": 0, "error": f"HTTP {response.status_code}"}
             
             html = response.text
             
-            # Pattern 1: Look for "Total downloads" text with number
-            # Example: "Total downloads 4K" or "Total downloads 4,000"
+            # First, try to find the latest version's download count
+            # Look for the first version entry (which should be the latest)
+            # Pattern: Look for download icon followed by number, near version tags like "latest", "4.12"
+            latest_version_downloads = 0
+            
+            # Pattern 1: Look for download count near "latest" tag or first version entry
+            # The structure is usually: version tags, then "Published X ago", then download count
+            latest_patterns = [
+                # Match download icon/button followed by number in the latest version section
+                r'(?:latest|Published[^<]*Digest[^<]*)(?:[^<]*<[^>]*>)*[^<]*([\d,]+)\s*(?:Version downloads|downloads?)',
+                # Match number right after download icon
+                r'<[^>]*download[^>]*>[^<]*([\d,]+)',
+                # Match in the first version row
+                r'Published[^<]*ago[^<]*Digest[^<]*>([^<]*<[^>]*>)*[^<]*([\d,]+)\s*(?:Version downloads|downloads?)',
+            ]
+            
+            for pattern in latest_patterns:
+                matches = re.findall(pattern, html, re.IGNORECASE | re.DOTALL)
+                if matches:
+                    # Take the first match (should be the latest version)
+                    for match in matches:
+                        if isinstance(match, tuple):
+                            match = match[-1]  # Take last element if tuple
+                        try:
+                            count = int(match.replace(',', '').strip())
+                            if count > 0:
+                                latest_version_downloads = count
+                                print(f"Found latest version downloads: {count}")
+                                break
+                        except (ValueError, AttributeError):
+                            continue
+                    if latest_version_downloads > 0:
+                        break
+            
+            # Pattern 2: Look for "Total downloads" text with number (all-time total)
             total_patterns = [
                 r'Total downloads[:\s]+([\d,\.]+[KM]?)',
                 r'Total downloads[:\s]+([\d,]+)',
@@ -179,8 +213,8 @@ class GitHubPackagesFetcher:
                     if total_downloads > 0:
                         break
             
-            # Pattern 2: Look in JSON data embedded in the page
-            if total_downloads == 0:
+            # Pattern 3: Look in JSON data embedded in the page
+            if total_downloads == 0 or latest_version_downloads == 0:
                 # Try to find JSON data in script tags
                 script_pattern = r'<script[^>]*type=["\']application/json["\'][^>]*>(.*?)</script>'
                 scripts = re.findall(script_pattern, html, re.DOTALL | re.IGNORECASE)
@@ -207,42 +241,32 @@ class GitHubPackagesFetcher:
                         
                         found = find_downloads(data)
                         if found and found > 0:
-                            total_downloads = found
+                            if total_downloads == 0:
+                                total_downloads = found
+                            if latest_version_downloads == 0:
+                                latest_version_downloads = found
                             break
                     except (json.JSONDecodeError, ValueError):
                         continue
             
-            # Pattern 3: Look for version-specific downloads and sum them
-            if total_downloads == 0:
-                # Pattern: "30Version downloads" or "100 downloads" near version tags
-                version_download_patterns = [
-                    r'([\d,]+)\s*Version downloads',
-                    r'([\d,]+)\s*downloads',
-                    r'"downloads":\s*([\d,]+)',
-                ]
-                
-                version_downloads = []
-                for pattern in version_download_patterns:
-                    matches = re.findall(pattern, html, re.IGNORECASE)
-                    for match in matches:
-                        try:
-                            count = int(match.replace(',', ''))
-                            if count > 0:
-                                version_downloads.append(count)
-                        except ValueError:
-                            continue
-                
-                if version_downloads:
-                    total_downloads = sum(version_downloads)
+            # If we found latest version downloads but not total, use latest as total
+            # (for display purposes, showing latest is more useful than all-time)
+            if latest_version_downloads > 0 and total_downloads == 0:
+                total_downloads = latest_version_downloads
+            elif total_downloads > 0 and latest_version_downloads == 0:
+                # If we only have total, use it for latest too
+                latest_version_downloads = total_downloads
             
             return {
                 "total_downloads": total_downloads,
+                "latest_version_downloads": latest_version_downloads,
                 "source": "scraped"
             }
         
         except Exception as e:
             return {
                 "total_downloads": 0,
+                "latest_version_downloads": 0,
                 "error": str(e),
                 "source": "scraped"
             }
@@ -281,9 +305,17 @@ class GitHubPackagesFetcher:
             # For container packages, scrape the web page for download counts
             if package_type == "container":
                 scraped_data = self._scrape_package_downloads(owner, package_name)
-                total_downloads = scraped_data.get("total_downloads", 0)
-                if total_downloads > 0:
-                    print(f"Scraped {total_downloads} downloads for {owner}/{package_name}")
+                # Prefer latest version downloads over total (more accurate for current state)
+                scraped_latest = scraped_data.get("latest_version_downloads", 0)
+                scraped_total = scraped_data.get("total_downloads", 0)
+                
+                if scraped_latest > 0:
+                    total_downloads = scraped_latest
+                    latest_version_downloads = scraped_latest
+                    print(f"Scraped latest version downloads: {scraped_latest} for {owner}/{package_name}")
+                elif scraped_total > 0:
+                    total_downloads = scraped_total
+                    print(f"Scraped total downloads: {scraped_total} for {owner}/{package_name}")
             else:
                 # For other package types, try API
                 for version in versions:
