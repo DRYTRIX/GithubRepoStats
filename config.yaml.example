@@ -27,15 +27,19 @@ display_settings:
   width: 80
   height: 4
   
-  # For GUI/Fullscreen HDMI display:
+  # For GUI/Fullscreen HDMI display (unified defaults: dark blue theme, Segoe UI):
   # fullscreen: true
-  # bg_color: "#0a0e27"      # Background color (hex) - dark blue
-  # text_color: "#ffffff"     # Text color (hex)
-  # accent_color: "#00d4ff"    # Accent/highlight color (hex) - cyan
-  # font_family: "Segoe UI"    # Font family name (or Arial, Helvetica, etc.)
-  # title_font_size: 64        # Font size for titles
-  # body_font_size: 32         # Font size for body text
-  # small_font_size: 20        # Font size for small text
+  # bg_color: "#0a0e27"           # Background (hex). Default: dark blue
+  # text_color: "#ffffff"         # Text color (hex)
+  # accent_color: "#00d4ff"       # Accent/highlight (hex). Default: cyan
+  # font_family: "Segoe UI"       # Font (fallbacks: Segoe UI, Arial)
+  # title_font_size: 64           # Titles
+  # body_font_size: 32            # Body text
+  # small_font_size: 20           # Small text / eyebrow labels
+  # card_border_color: "#2a3050"  # Optional. Card border (hex). Default: derived from palette
+  # divider_color: "#1e2440"      # Optional. Divider line (hex). Default: derived from palette
+  # show_rotation_indicator: true # Dots showing summary vs repo. Default: true
+  # transition_type: "fade"       # "none" or "fade" when rotating views. Default: fade
   
   # For character LCD (I2C mode):
   # mode: i2c

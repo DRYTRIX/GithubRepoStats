@@ -1,0 +1,94 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  version:
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.set.outputs.version }}
+    steps:
+      - id: set
+        run: echo "version=${GITHUB_REF_NAME#v}" >> $GITHUB_OUTPUT
+
+  build:
+    needs: version
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact_name: build-windows
+            asset_name: GithubRepoStats-${{ needs.version.outputs.version }}-win64.exe
+            dist_binary: dist/GithubRepoStats.exe
+          - os: ubuntu-22.04
+            artifact_name: build-linux
+            asset_name: GithubRepoStats-${{ needs.version.outputs.version }}-linux-x64
+            dist_binary: dist/GithubRepoStats
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt -r requirements-build.txt
+
+      - name: Build executable
+        run: pyinstaller GithubRepoStats.spec
+
+      - name: Rename and upload artifact
+        shell: bash
+        run: |
+          mkdir -p upload
+
+          cp "${{ matrix.dist_binary }}" "upload/${{ matrix.asset_name }}"
+          ls -la upload/
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact_name }}
+          path: upload/${{ matrix.asset_name }}
+
+  release:
+    needs: [version, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download Windows build
+        uses: actions/download-artifact@v4
+        with:
+          name: build-windows
+
+      - name: Download Linux build
+        uses: actions/download-artifact@v4
+        with:
+          name: build-linux
+
+      - name: Prepare release assets
+        run: |
+          mkdir -p release-assets
+          mv build-windows/* release-assets/ 2>/dev/null || true
+          mv build-linux/* release-assets/ 2>/dev/null || true
+          cp config.yaml.example release-assets/
+          ls -la release-assets/
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: Release ${{ github.ref_name }}
+          generate_release_notes: true
+          files: release-assets/*
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

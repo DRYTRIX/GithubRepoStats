@@ -3,9 +3,10 @@
 import sys
 import time
 import signal
+import shutil
 import yaml
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Dict, Any, Optional, Tuple
 
 from github_fetcher import GitHubFetcher
 from cache_manager import CacheManager
@@ -15,6 +16,19 @@ from github_packages_fetcher import GitHubPackagesFetcher
 from donations_fetcher import DonationsFetcher
 from utils import truncate_text
 import threading
+
+
+def _resolve_paths() -> Tuple[Path, Path]:
+    """Return (exe_dir, example_path) for config resolution."""
+    if getattr(sys, "frozen", False):
+        exe_dir = Path(sys.executable).parent
+        example_path = Path(sys._MEIPASS) / "config.yaml.example"
+    else:
+        exe_dir = Path(__file__).resolve().parent
+        example_path = exe_dir / "config.yaml.example"
+        if not example_path.exists():
+            example_path = Path.cwd() / "config.yaml.example"
+    return exe_dir, example_path
 
 
 class GitHubStatsApp:
@@ -80,11 +94,19 @@ class GitHubStatsApp:
     def _load_config(self) -> Dict[str, Any]:
         """Load configuration from YAML file."""
         if not self.config_path.exists():
-            raise FileNotFoundError(
-                f"Config file not found: {self.config_path}\n"
-                "Please create config.yaml (see config.yaml.example)"
-            )
-        
+            exe_dir, example_path = _resolve_paths()
+            if example_path.exists():
+                shutil.copy(example_path, self.config_path)
+                print(
+                    f"Config not found; created {self.config_path} from example. "
+                    "Please edit with your GitHub token and repositories."
+                )
+            else:
+                raise FileNotFoundError(
+                    f"Config file not found: {self.config_path}\n"
+                    "Please create config.yaml (see config.yaml.example)"
+                )
+
         with open(self.config_path, "r", encoding="utf-8") as f:
             config = yaml.safe_load(f)
         
@@ -112,13 +134,17 @@ class GitHubStatsApp:
         if display_type == "gui" or display_type == "fullscreen":
             return GUIDisplay(
                 fullscreen=display_settings.get("fullscreen", True),
-                bg_color=display_settings.get("bg_color", "#1a1a1a"),
+                bg_color=display_settings.get("bg_color", "#0a0e27"),
                 text_color=display_settings.get("text_color", "#ffffff"),
-                accent_color=display_settings.get("accent_color", "#4a9eff"),
-                font_family=display_settings.get("font_family", "Arial"),
-                title_font_size=display_settings.get("title_font_size", 48),
-                body_font_size=display_settings.get("body_font_size", 24),
-                small_font_size=display_settings.get("small_font_size", 18)
+                accent_color=display_settings.get("accent_color", "#00d4ff"),
+                font_family=display_settings.get("font_family", "Segoe UI"),
+                title_font_size=display_settings.get("title_font_size", 64),
+                body_font_size=display_settings.get("body_font_size", 32),
+                small_font_size=display_settings.get("small_font_size", 20),
+                card_border_color=display_settings.get("card_border_color"),
+                divider_color=display_settings.get("divider_color"),
+                show_rotation_indicator=display_settings.get("show_rotation_indicator", True),
+                transition_type=display_settings.get("transition_type", "fade"),
             )
         elif display_type == "character_lcd":
             width = display_settings.get("width", 20)
@@ -263,9 +289,8 @@ class GitHubStatsApp:
     def _rotate_display(self):
         """Rotate through repositories and summary view."""
         if not self.processed_repos and not self.aggregated_data:
-            # No data available, show error
             if self.is_gui:
-                self.display.update(["No repository data available."])
+                self.display.show_empty("No repository data available.")
             else:
                 self.display.update([
                     "No repository",
@@ -279,20 +304,19 @@ class GitHubStatsApp:
         
         # Determine what to show based on rotation
         if self.show_summary_first and self.current_repo_index == 0:
-            # Show summary first
             if self.aggregated_data:
                 self._display_summary(self.aggregated_data)
                 print("Displaying summary view")
         elif repos_list:
-            # Show individual repository
             repo_index = (self.current_repo_index - (1 if self.show_summary_first else 0)) % len(repos_list)
             repo_data = repos_list[repo_index]
             repo_name = list(self.processed_repos.keys())[repo_index]
             self._display_repo(repo_data)
             print(f"Displaying repository: {repo_name}")
         
-        # Advance to next item
         total_items = len(repos_list) + (1 if self.show_summary_first else 0)
+        if self.is_gui and total_items > 1 and hasattr(self.display, "update_rotation_index"):
+            self.display.update_rotation_index(self.current_repo_index, total_items)
         self.current_repo_index = (self.current_repo_index + 1) % total_items
     
     def _fetch_and_display(self):
@@ -301,7 +325,7 @@ class GitHubStatsApp:
         
         if not repositories:
             if self.is_gui:
-                self.display.update(["No repositories configured. Check config.yaml"])
+                self.display.show_empty("No repositories configured. Check config.yaml")
             else:
                 self.display.update([
                     "No repositories",
@@ -315,10 +339,9 @@ class GitHubStatsApp:
         processed_repos, aggregated = self._fetch_data()
         
         if processed_repos is None:
-            # Error occurred, show error message
             error_msg = "Failed to fetch repository data"
             if self.is_gui:
-                self.display.update([error_msg])
+                self.display.show_error("Error", error_msg)
             else:
                 self.display.update([
                     "Error occurred:",
@@ -415,14 +438,17 @@ class GitHubStatsApp:
 def main():
     """Main entry point."""
     import argparse
-    
+
+    exe_dir, _ = _resolve_paths()
+    default_config = str(exe_dir / "config.yaml") if getattr(sys, "frozen", False) else "config.yaml"
+
     parser = argparse.ArgumentParser(description="GitHub Repository Statistics Display")
     parser.add_argument(
         "--config",
-        default="config.yaml",
-        help="Path to configuration file (default: config.yaml)"
+        default=default_config,
+        help="Path to configuration file (default: config.yaml, or next to exe when frozen)"
     )
-    
+
     args = parser.parse_args()
     
     try:
